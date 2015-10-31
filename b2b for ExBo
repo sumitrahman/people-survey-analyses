@@ -1,0 +1,38 @@
+POSITIVE<-NULL
+NEGATIVE<-NULL
+survey<-c("2014 G7","2014 G7","2014 G6","2014 G6","2014 G5","2014 G5","2014 G3","2014 G3","2014 BIS","2014 BIS",
+  " "," ","2015 G7","2015 G7","2015 G6","2015 G6","2015 G5","2015 G5","2015 G3","2015 G3","2015 BIS","2015 BIS")
+survey<-factor(survey,levels=c("2014 G7","2014 G6","2014 G5","2014 G3","2014 BIS",
+          " ","2015 G7","2015 G6","2015 G5","2015 G3","2015 BIS"))
+Response<-rep(c("Agree","Strongly agree"),11)
+Response<-factor(Response,levels = c("Strongly disagree","Disagree","Agree","Strongly agree"))
+
+POSITIVE<-data.frame(survey, Response)
+
+Response<-rep(c("Strongly disagree","Disagree"),11)
+Response<-factor(Response,levels = c("Disagree","Strongly disagree","Agree","Strongly agree"))
+
+NEGATIVE<-data.frame(survey, Response)
+
+qu<-7
+POSITIVE$Freq<-ExBo[1:22,qu]
+POSITIVE$UL<-ExBo[23:44,qu]
+POSITIVE$LL<-ExBo[45:66,qu]
+NEGATIVE$Freq<-ExBo[67:88,qu]
+NEGATIVE$UL<-ExBo[89:110,qu]
+NEGATIVE$LL<-ExBo[111:132,qu]
+
+stackedchart <- ggplot() + 
+  ggtitle("I am clear on the expectations of the Executive Board of me\nin my leadership role")+
+  aes(survey, Freq, fill = Response, order = Response) + 
+  geom_bar(data = POSITIVE, stat = "identity", width=0.5) + geom_errorbar(data = POSITIVE,aes(ymin=LL,ymax=UL),width=0.2)+
+  geom_bar(data = NEGATIVE, stat = "identity", width=0.5) + geom_errorbar(data = NEGATIVE,aes(ymin=UL,ymax=LL),width=0.2)+
+  geom_hline(yintercept=0) + theme_bw()+xlab("")+
+  scale_y_continuous(name = "",labels = paste(c(100,75,50,25,0,25,50,75,100), "%"),limits = c(-1, 1),breaks = seq(-1, 1, .25)) + 
+  scale_fill_manual(limits=c(negatives,positives),values=c("red","pink","lightblue","blue"))+
+  theme(legend.position="bottom", plot.title=element_text(face="bold"))+guides(fill=guide_legend(title=NULL))+coord_flip()
+stackedchart
+
+png("ExBoq7.png",width=960,height=960,res=120)
+stackedchart
+dev.off()

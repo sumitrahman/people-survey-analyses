@@ -1,0 +1,327 @@
+
+database2<-database
+levels(database2$Theme)[levels(database2$Theme)=="Leadership and managing change"]<-"Leadership and\nmanaging change"
+levels(database2$Theme)[levels(database2$Theme)=="Organisational objectives and purpose"]<-"Organisational objectives\nand purpose"
+levels(database2$Theme)[levels(database2$Theme)=="Learning and development"]<-"Learning and\ndevelopment"
+levels(database2$Theme)[levels(database2$Theme)=="Inclusion and fair treatment"]<-"Inclusion and\nfair treatment"
+levels(database2$Theme)[levels(database2$Theme)=="Resources and workload" ]<-"Resources and\nworkload" 
+levels(database2$Theme)[levels(database2$Theme)=="Resources and workload" ]<-"Resources and\nworkload" 
+
+#might need this if categories are in the wrong order
+database$Category.clean<-factor(database$Category.clean, levels=rev(levels(database$Category.clean)))
+database2$Category.clean<-factor(database2$Category.clean, levels=rev(levels(database2$Category.clean)))
+
+#facetted theme charts by specific demographic-----------
+ggplot(subset(database2,
+              Theme.set=="A"&
+                Breakdown %in% c("ex", "BEIS") &
+               # substr(database$Category.clean,1,7)!="unknown"&
+                Category.clean!="outside GB"),
+       aes(x=Score, y=Category.clean, shape=BEIS.indicator))+
+  geom_point(size=3)+
+  ggtitle("Theme scores for different grades")+
+  scale_x_continuous(labels=percent,name="Theme score")+
+  theme_bw()+
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_line(colour="grey", linetype="dashed"),
+        legend.position = "none",
+        plot.title = element_text(hjust=0.5,size=rel(1.5)),
+        axis.title.y = element_blank(),
+        axis.text.y = element_text(size=rel(1.2)))+
+  facet_wrap(~Theme, ncol=3)
+
+#set up a title vector for each demographic then use a loop to generate graphs and save pdfs
+titles.for.demographics<-c("Insert title for graph here",
+                           "Insert title for graph here",
+                           "Insert title for graph here",
+                           "Insert title for graph here",
+                           "Insert title for graph here",
+                           "Insert title for graph here",
+                           "Insert title for graph here",
+                           "Insert title for graph here",
+                           "Insert title for graph here",
+                           "Insert title for graph here",
+                           "Insert title for graph here",
+                           "Insert title for graph here",
+                           "Insert title for graph here")
+
+
+ggg<-function(xx){
+  ggplot(subset(database2,
+                Theme.set=="A"&
+                  Breakdown %in% c(demographics[xx], "BEIS") &
+                  # substr(database$Category.clean,1,7)!="unknown"&
+                  Category.clean!="outside GB"),
+         aes(x=Score, y=Category.clean, shape=BEIS.indicator))+
+    geom_point(size=3)+
+    ggtitle(titles.for.demographics[xx])+
+    scale_x_continuous(labels=percent,name="Theme score")+
+    theme_bw()+
+    theme(panel.grid.major.x = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.major.y = element_line(colour="grey", linetype="dashed"),
+          legend.position = "none",
+          plot.title = element_text(hjust=0.5,size=rel(1.5)),
+          axis.title.y = element_blank(),
+          axis.text.y = element_text(size=rel(1.2)))+
+    facet_wrap(~Theme, ncol=3)
+}
+
+for (i in 1:13){
+  png(filename=paste0("themes by ",demographics[i],".png"),width = 16, height=24, units="cm",res=72*4)
+  print(ggg(i))
+  dev.off()
+  }
+
+
+#facet demographic charts, for a specific Breakdown, for theme scores-------
+ggplot(subset(database,
+              Theme.set=="A"&
+                Breakdown %in% c("ex", "BEIS")&
+                substr(database$Category.clean,1,7)!="unknown"&
+                Category.clean!="outside GB"),
+       aes(Score, reorder(Theme,Score), shape=BEIS.indicator))+
+  geom_point(size=3)+
+  ggtitle("Theme scores for different grades")+
+  scale_x_continuous(labels=percent,name="Theme score")+
+  theme_bw()+
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_line(colour="grey", linetype="dashed"),
+        legend.position = "none",
+        plot.title = element_text(hjust=0.5,size=rel(1.5)),
+        axis.title.y = element_blank(),
+        axis.text.y = element_text(size=rel(1.2)))+
+  facet_wrap(~Category.clean)
+
+titles.for.thematics<-c("Insert title for graph here",
+                           "Insert title for graph here",
+                           "Insert title for graph here",
+                           "Insert title for graph here",
+                           "Insert title for graph here",
+                           "Insert title for graph here",
+                           "Insert title for graph here",
+                           "Insert title for graph here",
+                           "Insert title for graph here",
+                           "Insert title for graph here",
+                           "Insert title for graph here",
+                           "Insert title for graph here",
+                           "Insert title for graph here")
+
+
+ggg<-function(xx){
+  ggplot(subset(database,
+                Theme.set=="A"&
+                  Breakdown %in% c(demographics[xx], "BEIS")&
+                  substr(database$Category.clean,1,7)!="unknown"&
+                  Category.clean!="outside GB"),
+         aes(Score, reorder(Theme,Score), shape=BEIS.indicator))+
+    geom_point(size=3)+
+    ggtitle(titles.for.thematics[xx])+
+    scale_x_continuous(labels=percent,name="Theme score")+
+    theme_bw()+
+    theme(panel.grid.major.x = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.major.y = element_line(colour="grey", linetype="dashed"),
+          legend.position = "none",
+          plot.title = element_text(hjust=0.5,size=rel(1.5)),
+          axis.title.y = element_blank(),
+          axis.text.y = element_text(size=rel(1.2)))+
+    facet_wrap(~Category.clean)
+}
+
+for (i in 1:13){
+  png(filename=paste0("themes by values of ",demographics[i],".png"),width = 16, height=24, units="cm",res=72*4)
+  print(ggg(i))
+  dev.off()
+}
+
+#engagement by wanting to leave BEIS-----------------
+#yticks_val<- pretty_breaks(n=5)(data$ees)
+
+yticks_val<- c(0,0.2,0.4,0.6,0.8,1)
+
+png(filename = "engagement by intention to stay.png", width=16, height=18, units = "cm", res=72*4)
+barplot(svyby(~Theme9.resid,~C01,rake.des,svymean,na.rm=TRUE)[,2]+theme.means.all["Leadership and managing change"],
+           col="steelblue",
+           yaxt="n",
+           main="Engagement changes depending on how long\nyou intend to stay in BEIS - no other theme is\nthis strongly related to intention to leave",
+           xlab="When you want to leave BEIS",
+           ylab="Engagement Index",
+           ylim=c(0,.6))
+axis(2, at=yticks_val, lab=percent(yticks_val))
+axis(1, at=seq(from=0.7,to=5.5,length.out = 5),labels=c("ASAP","within\n12 months","within\n3 years",
+    "not for\n3 years","unknown"), cex.axis=0.8)
+dev.off()
+
+#compare two categories and BEIS for each theme score----------
+ggplot(subset(database,
+              Theme.set=="A"&
+                Breakdown %in% c("disabled", "BEIS")&
+                substr(database$Category.clean,1,7)!="unknown"&
+                Category.clean %in% c("BEIS","disabled","not disabled")),
+       aes(Score, reorder(Theme,Score), shape=Category.clean))+
+  geom_point(size=3, aes(colour=Category.clean))+
+  scale_x_continuous(labels=percent,name="Theme score")+
+  theme_bw()+
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_line(colour="grey", linetype="dashed"),
+        axis.title.y = element_blank(),
+        axis.text.y = element_text(size=rel(1.2)),
+        plot.title = element_text(hjust=0.5))+
+  guides(shape=guide_legend(title=NULL),
+         colour=guide_legend(title=NULL))+
+  ggtitle("Gender differences most apparent in Engagement\nand L&D")
+
+
+#response rates by grade-------
+response.rates.by.grade<-table(data$grade)/(grades.from.register/3262*3258)
+names(response.rates.by.grade)[4]<-"FS"
+yticks_val<- c(0,0.2,0.4,0.6,0.8,1)
+
+png(filename=paste0("response rates by grade.png"),width = 16, height=18, units="cm",res=72*4)
+
+barplot(response.rates.by.grade[1:8],
+        col="steelblue",
+        yaxt="n",
+        main="Response rates differ by grade so survey\nestimates need bias-adjustment",
+        ylab="response rate",
+        ylim=c(0,1))
+axis(2, at=yticks_val, lab=percent(yticks_val))
+dev.off()
+
+#facet theme charts by demographics, for a specific theme-------
+ggplot(subset(database,
+              Theme=="Engagement Index"&
+                Breakdown %in% demographics &
+                Breakdown != "ex" &
+                substr(database$Category.clean,1,7)!="unknown" &
+                substr(database$Category.clean,1,6)!="prefer" &
+                Category.clean!="outside GB"),
+       aes(y=Category.clean, x=Score))+
+  geom_point(size=3)+
+  ggtitle("Theme scores for ")+
+  scale_x_continuous(labels=percent,name="Theme score")+
+  theme_bw()+
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_line(colour="grey", linetype="dashed"),
+        legend.position = "none",
+        plot.title = element_text(hjust=0.5,size=rel(1.5)),
+        axis.title.y = element_blank(),
+        axis.text.y = element_text(size=rel(1.2)))+
+  facet_wrap(~Breakdown, scales="free_y",ncol = 3)
+
+
+ggg<-function(xx){
+  ggplot(subset(database,
+                Theme==theme.names[xx]&
+                  Breakdown %in% demographics &
+                  Breakdown != "ex" &
+                  substr(database$Category.clean,1,7)!="unknown" &
+                  substr(database$Category.clean,1,6)!="prefer" &
+                  Category.clean!="outside GB"),
+         aes(y=Category.clean, x=Score))+
+    geom_point(size=3)+
+    ggtitle(paste0("Theme scores for '",theme.names[xx],"'"))+
+    scale_x_continuous(labels=percent,name="Theme score")+
+    theme_bw()+
+    theme(panel.grid.major.x = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.major.y = element_line(colour="grey", linetype="dashed"),
+          legend.position = "none",
+          plot.title = element_text(hjust=0.5,size=rel(1.5)),
+          axis.title.y = element_blank(),
+          axis.text.y = element_text(size=rel(1.2)))+
+    facet_wrap(~Breakdown, scales="free_y",ncol = 3)
+}
+
+for (i in 1:14){
+  png(filename=paste0("summary of ",theme.names[i],".png"),width = 16, height=24, units="cm",res=72*4)
+  print(ggg(i))
+  dev.off()
+}  
+
+
+#days of week, time of survey etc----
+data$dow<-weekdays(data$EndTime)
+data$dow[data$dow %in% c("Saturday","Sunday")]<-"weekend"
+data$dow<-factor(data$dow,levels=c("Monday","Tuesday","Wednesday","Thursday","Friday","weekend"))
+hier.des<-svydesign(id=~1, strata=~hier3, fpc=~Population3,data=data)
+rake.des<-rake(design = hier.des, 
+               sample.margins = list(~hier5, ~poststratum), 
+               population.margins = list(pop.rake.hier, pop.rake.grade))
+
+yticks_val<- c(0,0.2,0.4,0.6,0.8,1)
+
+png(filename=paste0("engagement by day of week.png"),width = 16, height=18, units="cm",res=72*4)
+barplot(svyby(~Theme10.resid,~dow,rake.des,svymean,na.rm=TRUE)[,2]+theme.means.all["Engagement Index"],
+        col="steelblue",
+        yaxt="n",
+        ylim=c(0,.6),
+        main="Engagement changes slightly depending on\nwhich weekday you take part in the survey",
+        ylab="Engagement Index")
+axis(2, at=yticks_val, lab=percent(yticks_val))
+axis(1, at=seq(from=0.7,to=6.7,length.out = 6),labels=levels(data$dow), cex.axis=0.8)
+dev.off()
+
+yticks_val<- c(0,0.2,0.4,0.6,0.8,1)
+
+png(filename=paste0("workload by day of week.png"),width = 16, height=18, units="cm",res=72*4)
+barplot(svyby(~Theme7.resid,~dow,rake.des,svymean,na.rm=TRUE)[,2]+theme.means.all["Resources and workload"],
+        col="steelblue",
+        yaxt="n",
+        ylim=c(0,.8),
+        main="If you did the survey during the weekend\nyour 'Resources and workload' score is lower",
+        ylab="Resources and workload theme score")
+axis(2, at=yticks_val, lab=percent(yticks_val))
+axis(1, at=seq(from=0.7,to=6.7,length.out = 6),labels=levels(data$dow))
+dev.off()
+
+png(filename=paste0("engagement by date.png"),width = 16, height=18, units="cm",res=72*4)
+ggplot(data, aes(EndTime, Theme10.resid))+
+  ggtitle("Engagement scores were better\nduring the second half of October")+
+  scale_y_continuous(labels=percent,name="Change from final Engagement Index for BEIS")+
+  theme_bw()+
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_line(colour="grey", linetype="dashed"),
+        legend.position = "none",
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size=rel(1.2)),
+        axis.text.y = element_text(size=rel(1.2)),
+        plot.title = element_text(hjust=0.5,size=rel(2)))+
+  geom_smooth(method = "loess")
+dev.off()
+
+data2<-data[,c("EndTime","Theme10.resid")]
+data2$tod<-(as.numeric(data2$EndTime) %% 86400)/3600
+
+png(filename=paste0("engagement by time of day.png"),width = 16, height=18, units="cm",res=72*4)
+ggplot(data2, aes(tod, Theme10.resid))+
+  ggtitle("Engagement scores were better\nduring the evenings")+
+  scale_x_continuous(breaks=0:23,name="Hours after midnight")+
+  scale_y_continuous(labels=percent,name="Change from final Engagement Index")+
+  theme_bw()+
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_line(colour="grey", linetype="dashed"),
+        legend.position = "none",
+        axis.title.x = element_text(size=rel(1)),
+        axis.title.y = element_text(size=rel(1.2)),
+        axis.text.y = element_text(size=rel(1.2)),
+        plot.title = element_text(hjust=0.5,size=rel(2)))+
+  geom_smooth(method = "loess")
+dev.off()
+rm(data2)
+
+#speed of survey completion
+data$time.decile<-cut(as.numeric(data$EndTime-data$StartTime),
+                      breaks=c(0,
+                               quantile(as.numeric(data$EndTime-data$StartTime),
+                                        probs=seq(from=.1,to=1,length.out=10))))
+#data$time.decile<-cut(as.numeric(data$EndTime-data$StartTime),breaks=c(0,10,Inf))
+
+svyby(~Theme10.resid,~time.decile,rake.des,svymean,na.rm=TRUE)[,2]+theme.means.all["Engagement Index"]

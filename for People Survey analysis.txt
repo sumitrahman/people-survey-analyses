@@ -1,0 +1,394 @@
+
+# load packages, clean the environment and set options --------------------
+
+
+library(haven)        #to read in data
+library(tidyr)        #for data manipulation
+library(dplyr)        #for data frame manipulation
+library(survey)       #for survey analysis
+library(KernSmooth)   #used by survey::svysmooth() 
+library(hexbin)       #used by survey::svyplot() for hex and grayhex styles
+library(ggplot2)      #for graphing
+library(scales)       #for graphing
+library(xlsx)         #for exporting results to Excel
+
+rm(list=ls())
+
+options(survey.lonely.psu = "adjust")
+
+# read in data and derive population and sample sizes ---------------------
+
+#note that org2016_BEIS_PNS.dta is the Stata file after amending for use of the
+#.a missing value in the original file
+data<-read_dta("org2016_BEIS_PNS.dta")
+hierarchy<-read_dta("org2016_BEIS_hierarchy.dta")
+hierarchy<-hierarchy[,-(3:4)]
+
+children<-filter(hierarchy,substr(DeptCode,1,2)!="PS") %>%
+  filter(DeptCode!="CIVILSERVICE") %>%
+  arrange(ResponseID,desc(Population)) %>%
+  mutate(parent=lag(DeptCode)) %>%
+  filter(DeptCode!="BEIS") %>%
+  distinct(DeptCode,.keep_all = TRUE) %>%
+  select(DeptCode,parent,Population)
+
+children[nrow(children)+1,]<-c("BEIS","CIVILSERVICE",14891)
+children$Population<-as.numeric(children$Population)  
+children$sum.of.children<--1
+
+for (i in children$DeptCode){
+  children$sum.of.children[match(i,children$DeptCode)]<-
+    sum(children$Population[children$parent==i])
+}
+
+children<-mutate(children,RU.Population=Population-sum.of.children) %>%
+  select(-sum.of.children)
+
+response.rates<-filter(hierarchy,substr(DeptCode,1,2)!="PS") %>%
+  distinct(DeptCode,Returns,Population) %>%
+  rename(hier8=DeptCode) %>%
+  mutate(Rate=Returns/Population) %>%
+  arrange(desc(Population))
+  
+#attr(data$B49, "label") for question wordings 
+
+dt<-filter(hierarchy,substr(DeptCode,1,2)!="PS") %>%
+  arrange(ResponseID,desc(Population)) %>%
+  group_by(ResponseID) %>%
+  mutate(hier=order(-Population))
+
+dt<-dt[,-(3:4)] %>%
+  spread(hier, DeptCode)
+
+names(dt)[2:9]<-paste0("hier",1:8)
+
+dt$Population1=431706
+dt<-left_join(dt,children,by=c("hier2"="DeptCode")) %>%
+  select(-parent,-RU.Population) %>%
+  rename(Population2=Population)
+dt<-left_join(dt,children,by=c("hier3"="DeptCode")) %>%
+  select(-parent,-RU.Population) %>%
+  rename(Population3=Population)
+dt<-left_join(dt,children,by=c("hier4"="DeptCode")) %>%
+  select(-parent,-RU.Population) %>%
+  rename(Population4=Population)
+
+#for the fifth tier
+#take dt where hier5 isn't NA and do similar move to above
+#take dt where hier5 is NA, set hier5=hier4 then do similar to above but use 
+#RU.Population instead of Population; then bring them back
+
+#repeat for tiers 6-8
+
+dt.1<-filter(dt,!is.na(hier5)) %>%
+  left_join(children,by=c("hier5"="DeptCode")) %>%
+  select(-parent,-RU.Population) %>%
+  rename(Population5=Population)
+
+dt.2<-filter(dt,is.na(hier5)) %>%
+  mutate(hier5=hier4) %>%
+  left_join(children,by=c("hier5"="DeptCode")) %>%
+  select(-parent,-Population) %>%
+  rename(Population5=RU.Population)
+
+dt<-bind_rows(dt.1,dt.2)
+
+
+dt.1<-filter(dt,!is.na(hier6)) %>%
+  left_join(children,by=c("hier6"="DeptCode")) %>%
+  select(-parent,-RU.Population) %>%
+  rename(Population6=Population)
+
+dt.2<-filter(dt,is.na(hier6)) %>%
+  mutate(hier6=hier5) %>%
+  left_join(children,by=c("hier6"="DeptCode")) %>%
+  select(-parent,-Population) %>%
+  rename(Population6=RU.Population)
+
+dt<-bind_rows(dt.1,dt.2)
+
+dt.1<-filter(dt,!is.na(hier7)) %>%
+  left_join(children,by=c("hier7"="DeptCode")) %>%
+  select(-parent,-RU.Population) %>%
+  rename(Population7=Population)
+
+dt.2<-filter(dt,is.na(hier7)) %>%
+  mutate(hier7=hier6) %>%
+  left_join(children,by=c("hier7"="DeptCode")) %>%
+  select(-parent,-Population) %>%
+  rename(Population7=RU.Population)
+
+dt<-bind_rows(dt.1,dt.2)
+
+dt.1<-filter(dt,!is.na(hier8)) %>%
+  left_join(children,by=c("hier8"="DeptCode")) %>%
+  select(-parent,-RU.Population) %>%
+  rename(Population8=Population)
+
+dt.2<-filter(dt,is.na(hier8)) %>%
+  mutate(hier8=hier7) %>%
+  left_join(children,by=c("hier8"="DeptCode")) %>%
+  select(-parent,-Population) %>%
+  rename(Population8=RU.Population)
+
+dt<-bind_rows(dt.1,dt.2)
+
+remove("dt.1","dt.2")
+
+#problems due to poor population info and incorrect responses to reporting unit
+#2 individuals just put BEIS0000 as their unit, so their hier4 onwards is NA
+#putting them in MPST as this is joint BIS-DECC
+#giving them the same hierarchy data as ResponseID 3707278
+#BEIS0230 is the only hier 5 with more respondents than population
+#It is down as 4 but there are 6 respondents (and 2 more just added in)
+#so let's make its Population size 8
+
+dt[is.na(dt$hier4),-1]<-dt[dt$ResponseID==3707278,-1]
+dt$Population5[dt$hier5=="BEIS0230"]<-8
+dt$Population6[dt$hier6=="BEIS0230"]<-8
+dt$Population7[dt$hier7=="BEIS0230"]<-8
+dt$Population8[dt$hier8=="BEIS0230"]<-8
+
+data<-left_join(data,dt,by="ResponseID")
+
+
+#create poststratum variable, similar to K01_BIS but with AOs combined with EOs,
+#and missing values recoded to 9
+#AND TREAT ex-BIS and ex_DECC separately?
+data$poststratum<-ifelse(data$K01_BEIS==9,8,data$K01_BEIS)
+data$poststratum[is.na(data$poststratum)]<-9
+
+# derive theme scores-----------------------------------------------------
+
+theme.names<-c("My work","Organisational objectives and purpose","My manager",
+               "My team","Learning and development","Inclusion and fair treatment",
+               "Resources and workload","Pay and benefits",
+               "Leadership and managing change","Engagement Index","Taking action",
+               "Organisational culture","Leadership statement","Wellbeing")
+
+#matching theme.vec with the colnames of data
+theme.vec<-c(
+  rep(".",4),
+  rep(theme.names[1],5),
+  rep(theme.names[2],3),
+  rep(theme.names[3],10),
+  rep(theme.names[4],3),
+  rep(theme.names[5],4),
+  rep(theme.names[6],4),
+  rep(theme.names[7],7),
+  rep(theme.names[8],3),
+  rep(theme.names[9],10),
+  rep(theme.names[10],5),
+  rep(theme.names[11],3),
+  rep(theme.names[12],4),
+  rep(theme.names[13],2),
+  rep(".",256),
+  rep(0,100))
+
+#question W04 is reverse-scaled so needs to be rescaled before the Wellbeing
+#theme score is calculated
+data<-mutate(data,W04.rescale=10-W04)
+theme.vec[c(143:145,310)]<-theme.names[14]
+
+#calculate the theme scores
+data$Theme1<-rowMeans(data[,theme.vec[1:ncol(data)]==theme.names[1]])*0.25-0.25
+data$Theme2<-rowMeans(data[,theme.vec[1:ncol(data)]==theme.names[2]])*0.25-0.25
+data$Theme3<-rowMeans(data[,theme.vec[1:ncol(data)]==theme.names[3]])*0.25-0.25
+data$Theme4<-rowMeans(data[,theme.vec[1:ncol(data)]==theme.names[4]])*0.25-0.25
+data$Theme5<-rowMeans(data[,theme.vec[1:ncol(data)]==theme.names[5]])*0.25-0.25
+data$Theme6<-rowMeans(data[,theme.vec[1:ncol(data)]==theme.names[6]])*0.25-0.25
+data$Theme7<-rowMeans(data[,theme.vec[1:ncol(data)]==theme.names[7]])*0.25-0.25
+data$Theme8<-rowMeans(data[,theme.vec[1:ncol(data)]==theme.names[8]])*0.25-0.25
+data$Theme9<-rowMeans(data[,theme.vec[1:ncol(data)]==theme.names[9]])*0.25-0.25
+data$Theme10<-rowMeans(data[,theme.vec[1:ncol(data)]==theme.names[10]])*0.25-0.25
+data$Theme11<-rowMeans(data[,theme.vec[1:ncol(data)]==theme.names[11]])*0.25-0.25
+data$Theme12<-rowMeans(data[,theme.vec[1:ncol(data)]==theme.names[12]])*0.25-0.25
+data$Theme13<-rowMeans(data[,theme.vec[1:ncol(data)]==theme.names[13]])*0.25-0.25
+data$Theme14<-rowMeans(data[,theme.vec[1:ncol(data)]==theme.names[14]])*0.1
+
+# create required demographic variables with labels---------------------
+
+#note that the labelling used in the Stata file needs to be checked as the
+#structure is hard-coded here.  In particular the values that correspond to 
+#'prefer not to say' and 'unknown' differ between variables.  The Stata file as 
+#'received from Cabinet Office needs to be amended a little to take account of 
+#'the use of .a missing values for 'prefer not to say'.
+
+data$grade<-factor(data$poststratum, labels=c("SCS","G6","G7","Faststream","SEO",
+                                              "HEO","EO","AO/AA","unknown (grade)"))
+
+data$sex<-data$J01
+data$sex[is.na(data$sex)]<-4
+data$sex<-factor(data$sex, labels=c("male","female","prefer not to say (sex)","unknown (sex)"))
+                                              
+
+data$age<-7
+data$age[data$J02<4]<-1
+data$age[data$J02==4|data$J02==5]<-2
+data$age[data$J02==6|data$J02==7]<-3
+data$age[data$J02==8|data$J02==9]<-4
+data$age[data$J02==10|data$J02==11]<-5
+data$age[data$J02==12]<-6
+data$age<-factor(data$age, labels=c("16-29","thirties","forties","fifties",
+                                    "sixties","prefer not to say (age)","unknown (age)"))
+
+
+data$bme<-2
+data$bme[data$J03==1]<-1
+data$bme[data$J03==19]<-3
+data$bme[is.na(data$J03)]<-4
+data$bme<-factor(data$bme, labels=c("White British","BAME","prefer not to say (ethnicity)",
+                                    "unknown (ethnicity)"))
+
+data$bme2<-2
+data$bme2[data$J03<5]<-1
+data$bme2[data$J03==19]<-3
+data$bme2[is.na(data$J03)]<-4
+data$bme2<-factor(data$bme2, labels=c("White","BAME","prefer not to say (ethnicity)",
+                                    "unknown (ethnicity)"))
+
+data$disabled<-data$J04
+data$disabled[is.na(data$disabled)]<-4
+data$disabled<-factor(data$disabled, labels=c("disabled","not disabled",
+                                              "prefer not to say (disability)","unknown (disability)"))
+
+data$carer<-data$J05
+data$carer[is.na(data$carer)]<-4
+data$carer<-factor(data$carer, labels=c("carer","not a carer",
+                                              "prefer not to say (carer)","unknown (carer)"))
+
+data$childcarer<-data$J06
+data$childcarer[is.na(data$childcarer)]<-4
+data$childcarer<-factor(data$childcarer, labels=c("childcarer","not a childcarer",
+                                        "prefer not to say (childcarer)","unknown (childcarer)"))
+
+data$sexuality<-6
+data$sexuality[data$J07==1]<-1
+data$sexuality[data$J07>1]<-2
+data$sexuality[data$J07==5]<-3
+data$sexuality<-factor(data$sexuality, labels=c("heterosexual","not heterosexual",
+                                                  "prefer not to say (sexuality)","unknown (sexuality)"))
+
+data$religion<-data$J08
+data$religion[data$J08>2]<-3
+data$religion[data$J08==9]<-4
+data$religion[is.na(data$J08)]<-5
+data$religion<-factor(data$religion, labels=c("no religion","Christian",
+                                              "other religion",
+                                              "prefer not to say (religion)","unknown (religion)"))
+
+
+data$location<-ifelse(data$H1A<10,data$H1A,13)
+data$location[is.na(data$location)]<-13
+data$location[data$H01==2]<-10
+data$location[data$H01==3]<-11
+data$location[data$H01 >3]<-12
+
+#check if any H1A==10 then see if we can allocate to an English region
+data$location<-factor(data$location, labels=c("East Midlands","East of England",
+                                             "London","North East", "North West",
+                                             "South East","South West","West Midlands",
+                                             "Yorks & Humber","Scotland","Wales",
+                                             "outside GB","unknown (location)"))
+
+#The folowing was used when we had no Scotland in our locations (2015 BIS data):
+# data$location<-factor(data$location, labels=c("East Midlands","East of England",
+#                                               "London","North East", "North West",
+#                                               "South East","South West","West Midlands",
+#                                               "Yorks & Humber","Wales",
+#                                               "unknown"))
+
+data$location2<-1
+data$location2[data$location=="Yorks & Humber"]<-2
+data$location2<-factor(data$location2, labels=c("Not Yorks & Humber","Yorks & Humber"))
+
+data$losdept<-6
+data$losdept[data$H03<3]<-1
+data$losdept[data$H03==3|data$H03==4]<-2
+data$losdept[data$H03==5]<-3
+data$losdept[data$H03==6]<-4
+data$losdept[data$H03>6]<-5
+data$losdept<-factor(data$losdept, labels=c("less than 1 year","1-4 years",
+                                            "5-9 years","10-19 years",
+                                            "20+ years","unknown (time in dept)"))
+
+
+data$ftpt<-4
+data$ftpt[is.numeric(data$H06)]<-data$H06
+data$ftpt<-factor(data$ftpt, labels=c("full time","part time",
+                                            "job sharer","unknown (hours)"))
+
+data$ex<-1
+data$ex[data$hier4=="BEIS0122"]<-2
+data$ex[data$hier8=="BEIS0231"|data$hier8=="BEIS0235"]<-2
+data$ex[data$hier8=="BEIS0230"|data$hier8=="BEIS0233"]<-3
+data$ex<-factor(data$ex, labels=c("ex-BIS","ex-DECC","unknown (dept)"))
+
+# exploring the best level to use for poststratification---------------------
+
+#svymean(~Theme1+Theme2+Theme3+Theme4+Theme5+Theme6+Theme7+Theme8+Theme9+Theme10+
+#          Theme11+Theme12+Theme13+Theme14,
+#        svydesign(id=~1, strata=as.formula(paste0("~hier",1)), fpc=as.formula(paste0("~Population",1)),data=data), na.rm=TRUE)
+
+# theme.se.by.design<-as.data.frame(matrix(rep(0,14*5),nrow = 14),row.names = paste0("Theme",1:14))
+# names(theme.se.by.design)<-paste0("hier",1:5)
+# 
+# for (i in 1:5){
+#   theme.se.by.design[,i]<-
+#     diag(attr(svymean(~Theme1+Theme2+Theme3+Theme4+Theme5+Theme6+Theme7+Theme8+
+#                       Theme9+Theme10+Theme11+Theme12+Theme13+Theme14,
+#                       svydesign(id=~1, strata=as.formula(paste0("~hier",i)), 
+#                                 fpc=as.formula(paste0("~Population",i)),data=data),
+#                       na.rm=TRUE),
+#               "var"))^0.5
+# }
+# abc<-colMeans(theme.se.by.design[c(1,3,4,5,6,9,10,13,14),])
+# abc
+# colnames(theme.se.by.design)[match(min(abc),abc)]
+# remove("abc")
+# 
+# 
+# pp.se.by.design<-as.data.frame(matrix(rep(0,63*5),nrow = 63),
+#                                   row.names = c(paste0("ppB0",1:9),paste0("ppB",10:63)))
+# names(pp.se.by.design)<-paste0("hier",1:5)
+# 
+# all.q.model<-"~"
+# for (i in 1:9){all.q.model<-paste0(all.q.model,"ppB0",i,"+")}
+# for (i in 10:62){all.q.model<-paste0(all.q.model,"ppB",i,"+")}
+# all.q.model<-paste0(all.q.model,"ppB63")
+# 
+# for (i in 1:5){
+#   pp.se.by.design[,i]<-
+#     diag(attr(svymean(as.formula(all.q.model),
+#                       svydesign(id=~1, strata=as.formula(paste0("~hier",i)), 
+#                                 fpc=as.formula(paste0("~Population",i)),data=data),
+#                       na.rm=TRUE),
+#               "var"))^0.5
+# }
+# abc<-colMeans(pp.se.by.design)
+# abc
+# colnames(theme.se.by.design)[match(min(abc),abc)]
+# remove("abc")
+
+# set up the complex survey description--------------------------------
+
+hier.des<-svydesign(id=~1, strata=~hier3, fpc=~Population3,data=data)
+
+pop.rake.hier<-distinct(data,hier5,Population5) %>%
+                rename(Freq=Population5)
+
+grades.from.register<-c(140,208,484,169,248,356,241,83,45)+c(83,190,400,39,213,236,98,36,9)
+grades.from.register<-grades.from.register/sum(grades.from.register)*sum(pop.rake.hier$Freq)
+
+pop.rake.grade<-data.frame(poststratum=1:9,Freq=grades.from.register)
+
+rake.des<-rake(design = hier.des, 
+              sample.margins = list(~hier5, ~poststratum), 
+              population.margins = list(pop.rake.hier, pop.rake.grade))
+
+# some code for plotting for simple exploratory analysis------------
+
+#svyboxplot(ees~grade,design = rake.des,varwidth=TRUE, col="steelblue")
+#svycoplot(ees~Theme14|grade,design = rake.des,style="transparent",alpha=c(0,.3))
+#svyplot(ees~Theme14,design = rake.des,style="hex",xbins = 25)
+

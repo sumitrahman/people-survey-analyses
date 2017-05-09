@@ -1,0 +1,119 @@
+demographics<-c("grade",
+                "sex",
+                "age",
+                "bme",
+                "disabled",
+                "carer",
+                "childcarer",
+                "sexuality",
+                "religion",
+                "location",
+                "losdept",
+                "ftpt",
+                "ex")
+
+
+#build up database--------------
+
+abc<-"delete me"
+abcd<-"delete me"
+  for (j in demographics){
+    abc<-c(abc,levels(data[[j]]))
+    abcd<-c(abcd,rep(j,nlevels(data[[j]])))
+  }
+
+N<-(length(abc)-1)*length(theme.names)
+
+database<-data.frame(Theme=character(N),
+                     Breakdown=character(N),
+                     Category.clean=character(N),
+                     Score=double(N))
+
+
+database$Category.clean<-abc[-1]
+database$Breakdown<-abcd[-1]
+database$Theme<-rep(theme.names,each=length(abc)-1)
+rm(abc)
+rm(abcd)
+rm(N)
+
+
+database<-arrange(database,Breakdown %in% regressors.in)
+abc<-match(TRUE,database$Breakdown %in% regressors.in)
+
+for (i in 1:(abc-1)){
+  database$Score[i]<-svymean(as.formula(paste0("~Theme",match(database$Theme[i],theme.names),".resid")),
+                             subset(rake.des,data[[database$Breakdown[i]]]==database$Category.clean[i]),
+                             na.rm=TRUE)+
+    theme.means.all[[database$Theme[i]]]
+}
+for (i in abc:nrow(database)){
+  database$Score[i]<-subset(coef.lookups.all[[database$Theme[i]]][[database$Breakdown[i]]],
+                            category==database$Category.clean[i])$score
+}
+
+database<-rbind(database,
+                data.frame(Theme=theme.names,
+                           Breakdown="BEIS",
+                           Category.clean="BEIS",
+                           Score=theme.means.all[-1]))
+
+#return Sheffield effect to location
+ab<-database %>% filter(Category.clean=="Yorks & Humber")
+for (i in 1:length(theme.names)){
+ab$Score[i]<-ab$Score[i]+
+  subset(coef.lookups.all[[ab$Theme[i]]][["location2"]],
+         category=="Yorks & Humber")$effect
+}
+database<-rbind(filter(database,Category.clean!="Yorks & Humber"),ab)
+
+#set the order of factors
+database$Theme<-factor(database$Theme, levels = c("Engagement Index",
+                                                  "Leadership and managing change",
+                                                  "My work",
+                                                  "Organisational objectives and purpose",
+                                                  "My manager",
+                                                  "Learning and development",
+                                                  "Resources and workload",
+                                                  "Inclusion and fair treatment",
+                                                  "My team",
+                                                  "Taking action",
+                                                  "Organisational culture",
+                                                  "Leadership statement",
+                                                  "Wellbeing",
+                                                  "Pay and benefits"))
+
+database$Breakdown<-factor(database$Breakdown, levels = c("BEIS",demographics))
+database$Category.clean<-factor(database$Category.clean, 
+                                levels = c("BEIS",
+                                           levels(data$age),
+                                           levels(data$bme),
+                                           levels(data$carer),
+                                           levels(data$childcarer),
+                                           levels(data$disabled),
+                                           levels(data$ex),
+                                           levels(data$ftpt),
+                                           levels(data$grade),
+                                           levels(data$location),
+                                           levels(data$losdept),
+                                           levels(data$religion),
+                                           levels(data$sex),
+                                           levels(data$sexuality)))
+
+#reversing order of levels so they read top to bottom on the vertical axis 
+database$Category.clean<-factor(database$Category.clean, levels=rev(levels(database$Category.clean)))
+
+database$BEIS.indicator<-factor(ifelse(database$Breakdown=="BEIS",18,16))
+
+theme.set.A<-c("Engagement Index",
+               "Leadership and managing change",
+               "My work",
+               "Organisational objectives and purpose",
+               "My manager",
+               "Learning and development",
+               "Resources and workload",
+               "Inclusion and fair treatment",
+               "My team")
+
+database$Theme.set<-factor(ifelse(database$Theme %in% theme.set.A,"A","B"),
+                           levels=c("A","B"))

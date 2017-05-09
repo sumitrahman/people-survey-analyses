@@ -1,0 +1,14 @@
+
+use "W:\SURVEY-SUPPORT-TEAM\Pulse and People\2016\People Survey 2016\org2016_BEIS.dta" 
+
+recode J01 .a=3
+recode J02 .a=12
+recode J03 .a=19
+recode J04 .a=3
+recode J05 .a=3
+recode J06 .a=3
+recode J07 .a=5
+recode J08 .a=9
+recode H1A .a=10
+
+save "W:\SURVEY-SUPPORT-TEAM\Pulse and People\2016\People Survey 2016\org2016_BEIS_PNS.dta" 

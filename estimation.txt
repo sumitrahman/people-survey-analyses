@@ -1,0 +1,148 @@
+regressors.in<-c("age","grade", "losdept","sex","location2","disabled","religion")
+
+regressor.distributions<-
+  lapply(regressors.in,
+         function(x){svytable(as.formula(paste0("~",x)), rake.des)})
+names(regressor.distributions)<-regressors.in
+
+coef.lookups.ees<-
+  lapply(regressors.in,
+         function(x){data.frame(category=names(regressor.distributions[[x]]),
+                                effect=0)})
+names(coef.lookups.ees)<-regressors.in
+
+abc<-lapply(regressors.in,
+            function(x){as.vector(paste0(x,names(regressor.distributions[[x]]))[-1])})
+names(abc)<-regressors.in
+
+
+regress.ees<-svyglm(formula = 
+                      as.formula(paste(c("ees~1", regressors.in),collapse="+")), 
+                    design=rake.des)
+
+ab<-data.frame(rowID=as.numeric(attr(regress.ees$fitted.values,"names")),
+               predicted=regress.ees$fitted.values,
+               residual=regress.ees$residuals)
+
+ab<-mutate(ab,ResponseID=rake.des[["variables"]]$ResponseID[rowID])
+
+data<-left_join(data,ab[,-1],by="ResponseID") %>% 
+  rename(ees.pred=predicted,ees.resid=residual)
+
+rm(ab)
+
+for (j in regressors.in){
+  coef.lookups.ees[[j]][-1,2]<-regress.ees$coefficients[as.vector(abc[[j]])]
+}
+
+coef.lookups.all<-vector("list",length(theme.names)+1)
+coef.lookups.all[[1]]<-coef.lookups.ees
+
+theme.means.all<-vector("numeric",length(theme.names)+1)
+theme.means.all[1]<-svymean(~ees,rake.des,na.rm=TRUE)
+
+for (i in 1:(length(theme.names))){
+  LHS<-paste0("Theme",i,"~1")
+  
+  regression.formula<-as.formula(paste(c(LHS, regressors.in),collapse="+"))
+  
+  regress.theme<-svyglm(formula = regression.formula, design=rake.des)
+
+  abcd<-data.frame(rowID=as.numeric(attr(regress.theme$fitted.values,"names")),
+                 predicted=regress.theme$fitted.values,
+                 residual=regress.theme$residuals)
+
+  abcd<-mutate(abcd,ResponseID=rake.des[["variables"]]$ResponseID[rowID])
+
+  data<-left_join(data,abcd[,-1],by="ResponseID")
+
+  theme.index.pred<-paste0("Theme",i,".pred")
+  theme.index.resid<-paste0("Theme",i,".resid")
+  data[[theme.index.pred]]<-with(data,predicted)
+  data[[theme.index.resid]]<-with(data,residual)
+  data$predicted<-NULL
+  data$residual<-NULL
+  
+  coef.lookups<-coef.lookups.ees
+  for (j in regressors.in){
+    coef.lookups[[j]][-1,2]<-regress.theme$coefficients[as.vector(abc[[j]])]
+  }
+  
+  coef.lookups.all[[i+1]]<-coef.lookups
+  theme.means.all[i+1]<-svymean(as.formula(paste0("~Theme",i)),rake.des,na.rm=TRUE)
+}
+
+names(coef.lookups.all)<-c("ees",theme.names)
+names(theme.means.all)<-c("ees",theme.names)
+
+rm(LHS)
+rm(abc)
+rm(abcd)
+rm(coef.lookups.ees)
+rm(coef.lookups)
+
+#plot the residuals--------------
+# ggplot(data, aes(x=ees.pred, y=ees.resid))+geom_point()+facet_wrap(~age)
+# 
+# ggplot(data=data, aes(x=Theme14.pred, y=Theme14.resid))+geom_point()+facet_wrap(~age)
+# 
+# ggplot(data=ab, aes(x=predicted, y=residual))+geom_point()+facet_wrap(~disabled)
+# 
+# ggplot(data=ab, aes(x=predicted, y=residual))+geom_point()+facet_wrap(~religion)
+# 
+# ggplot(data=ab, aes(x=predicted, y=residual))+geom_point()+facet_wrap(~sex)
+# 
+# hexbinplot(ees.resid~ees.pred | grade, data=data[data$grade!="unknown",])
+# 
+# hexbinplot(ees.resid~ees.pred | age, data=data[data$age!="unknown",])
+
+#stdes<-svystandardize(design = subset(rake.des,ex!="unknown"),
+#                      by = ~grade, over = ~ex,population = stdpop,
+#                      excluding.missing = ~ees)
+
+#svyby(formula = ~ees,design = rake.des,by = ~ex,FUN = svymean,na.rm=TRUE)
+
+#svyby(formula = ~ees,design = stdes,by = ~ex,FUN = svymean)
+
+#data$d.o.w.<-weekdays(data$EndTime)
+#data$hour<-substr(data$EndTime,12,13)
+
+
+#do this after all predicts and residuals have been added to data--------
+hier.des<-svydesign(id=~1, strata=~hier3, fpc=~Population3,data=data)
+rake.des<-rake(design = hier.des, 
+               sample.margins = list(~hier5, ~poststratum), 
+               population.margins = list(pop.rake.hier, pop.rake.grade))
+
+
+#svyby(~Theme14,~ex,rake.des,svymean,na.rm=TRUE)
+
+
+#estimate the distributions of each regressor and put in the ees coef lookup----
+for (i in regressors.in){
+coef.lookups.all[["ees"]][[i]] <-
+    mutate(coef.lookups.all[["ees"]][[i]],
+           proportion=regressor.distributions[[i]]/sum(regressor.distributions[[i]]),
+          score=theme.means.all[["ees"]]+effect-sum(effect*proportion))
+}
+
+
+for (i in theme.names){
+  for (j in regressors.in){
+    abc<-coef.lookups.all[[i]][[j]]
+    abc$proportion<-coef.lookups.all[["ees"]][[j]]$proportion
+    coef.lookups.all[[i]][[j]]<-
+      mutate(abc,score=theme.means.all[[i]]+effect-sum(effect*proportion))
+  }
+}
+rm(abc)
+
+
+for (i in 1:14){
+  xyz<-svyby(as.formula(paste0("~Theme",i)),~grade,rake.des,svymean,na.rm=TRUE)
+
+  print(c(theme.names[i],round((xyz[6,2]-xyz[5,2])*100,1)))
+}
+print(xyz)
+rm(xyz)
+
